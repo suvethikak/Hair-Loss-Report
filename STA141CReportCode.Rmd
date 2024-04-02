@@ -1,0 +1,210 @@
+---
+title: >
+  `\vspace{-1.8cm}`{=latex}STA 141C Report Code
+subtitle: "Juliet Lubin, Jessica Young, Hyeonwoo Shin, Suvethika Kandasamy"
+output:
+  pdf_document: default
+  word_document: default
+  keep_tex: true
+  latex_engine: pdflatex
+header-includes:
+    -   \usepackage{geometry}
+    -   \geometry{margin=0.5in}
+---
+
+\vspace{-10truemm}
+
+```{r, results='hide'}
+hair <- read.csv("~/Downloads/Predict Hair Fall.csv")
+```
+
+```{r, results='hide', fig.keep = "none"}
+
+# qq plot for age variable
+qqnorm(hair$Age, 
+       main = "QQ Plot for Age", 
+       xlab = "Theoretical Quantiles", 
+       ylab = "Sample Quantiles",
+       col = "blue",
+       pch = 20
+)
+qqline(hair$Age, col = 2) # reference line
+
+```
+
+```{r, results='hide'}
+library(ggplot2)
+```
+
+```{r, results='hide', fig.keep = "none"}
+
+ggplot(hair, aes(x = Age, fill = as.factor(Hair.Loss))) +
+  geom_histogram(position = "dodge", bins = 30) +
+  labs(fill = "Hair Loss")
+```
+
+### Logistic Regression
+```{r, results='hide'}
+suppressMessages(library(caret))
+library(rpart)
+library(nnet)
+suppressMessages(library(randomForest))
+```
+
+```{r, results='hide'}
+
+set.seed(42)
+
+# split data into training and testing sets
+train_indices <- createDataPartition(hair$Hair.Loss, p = 0.8, list = FALSE)
+train_data <- hair[train_indices, ]
+test_data <- hair[-train_indices, ]
+
+# Suppress output while fitting the model
+invisible(capture.output(model <- rpart(Hair.Loss ~ ., data = train_data, method = "class")))
+
+# Make predictions on test data
+predictions <- predict(model, newdata = test_data, type = "class")
+
+# Evaluate model performance
+confusion_matrix <- table(predictions, test_data$Hair.Loss)
+print(confusion_matrix)
+
+# accuracy score
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+print(paste("Accuracy:", accuracy))
+
+# multinomial logistic regression model for hair loss with stress as a predictor
+invisible(capture.output(combined_model <- multinom(Hair.Loss ~ . + Stress, data = hair)))
+
+# Predict hair loss using the combined model
+predictions <- predict(combined_model, newdata = hair, type = "class")
+
+# Confusion matrix
+confusion_matrix <- table(hair$Stress, predictions)
+print(confusion_matrix)
+
+# Accuracy
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+print(paste("Accuracy:", accuracy))
+
+# multinomial logistic regression model with interaction term
+invisible(capture.output(model <- multinom(Hair.Loss ~ Stress *., data = train_data)))
+
+# Predict hair loss on test data
+predictions <- predict(model, newdata = test_data)
+
+# Confusion matrix
+conf_matrix <- table(test_data$Stress, predictions)
+print(conf_matrix)
+
+# Accuracy
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+print(paste("Accuracy:", accuracy))
+```
+
+```{r, results='hide'}
+
+# multinomial logistic regression model for hair loss with weight loss as predictor
+invisible(capture.output(combined_model <- multinom(Hair.Loss ~ . + Weight.Loss, data = hair)))
+
+# predict hair loss using the combined model
+predictions <- predict(combined_model, newdata = hair, type = "class")
+
+# Confusion matrix
+confusion_matrix <- table(hair$Weight.Loss, predictions)
+print(confusion_matrix)
+
+# Accuracy
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+print(paste("Accuracy:", accuracy))
+
+# multinomial logistic regression model with interaction term
+invisible(capture.output(model <- multinom(Hair.Loss ~ Weight.Loss *., data = train_data)))
+
+# predict hair loss on test data
+predictions <- predict(model, newdata = test_data)
+
+# Confusion matrix
+conf_matrix <- table(test_data$Weight.Loss, predictions)
+print(conf_matrix)
+
+# Accuracy
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+print(paste("Accuracy:", accuracy))
+```
+
+### Random Forest
+```{r, results='hide'}
+
+#Random forest model with all predictors
+rf_model_all <- randomForest(as.factor(Hair.Loss) ~ ., data = hair, ntree = 500)
+print(rf_model_all) # Print the random forest model results
+```
+
+```{r, results='hide'}
+
+rf_model_selected <- randomForest(as.factor(Hair.Loss) ~ Age + Smoking + Weight.Loss, data = hair, ntree = 500)
+print(rf_model_selected)
+```
+
+```{r, results='hide', verbose = FALSE}
+
+hair$Hair.Loss <- factor(hair$Hair.Loss, levels = c(0, 1), labels = c("No", "Yes"))
+
+#cross-validation
+train_control <- trainControl(method = "cv", number = 10, classProbs = TRUE)
+
+#logistic regression model with cross-validation
+cv_model <- train(Hair.Loss ~ Age + Smoking + Weight.Loss + I(Age^2),
+                  data = hair,
+                  method = "glm",
+                  family = "binomial",
+                  trControl = train_control)
+
+print(cv_model)
+```
+
+### Linear Discriminant Analysis
+```{r, results='hide'}
+
+library(MASS)
+
+# Preprocessing
+# Convert categorical variables into factors
+hair$Genetics <- as.factor(hair$Genetics)
+hair$Hormonal.Changes <- as.factor(hair$Hormonal.Changes)
+hair$Poor.Hair.Care.Habits <- as.factor(hair$Poor.Hair.Care.Habits)
+hair$Environmental.Factors <- as.factor(hair$Environmental.Factors)
+hair$Smoking <- as.factor(hair$Smoking)
+hair$Weight.Loss <- as.factor(hair$Weight.Loss)
+hair$Hair.Loss <- as.factor(hair$Hair.Loss)
+
+hair$NewAge <- rank(hair$Age)
+
+# Split the data into training and testing sets
+set.seed(123) # for reproducibility
+train_index <- sample(1:nrow(hair), 0.8*nrow(hair)) # 80% of data for training
+train_data <- hair[train_index, ]
+test_data <- hair[-train_index, ]
+
+
+# Train the LDA model
+lda_model <- lda(Hair.Loss ~ Genetics + Hormonal.Changes + Poor.Hair.Care.Habits + Environmental.Factors + Smoking + Weight.Loss + Age, data=train_data)
+lda_model
+# Make predictions on the testing set
+predictions <- predict(lda_model, test_data)
+```
+
+```{r, results='hide'}
+# Evaluate the model
+accuracy <- mean(predictions$class == test_data$Hair.Loss)
+print(paste("Accuracy:", accuracy))
+
+confusion_matrix <- table(Actual = test_data$Hair.Loss, Predicted = predictions$class)
+confusion_matrix
+```
+
+
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE}
+```
